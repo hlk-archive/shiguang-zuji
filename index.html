@@ -10877,7 +10877,7 @@ function codesOf(it) {
   if (it.kind === 'flight') {
     return {
       a: r.depCode || '', b: r.arrCode || '',
-      an: r.depCity || r.depAirport || '出发', bn: r.arrCity || r.arrAirport || '到达',
+      an: r.depCity || r.depAirport || r.depCode || '出发', bn: r.arrCity || r.arrAirport || r.arrCode || '到达',
       at: fmtTime(r.depTime), bt: fmtTime(r.arrTime), no: r.no || ''
     };
   }
@@ -10993,20 +10993,21 @@ function parseFlight(raw, qr) {
       if (/[A-Z]/.test(m[1])) { no = m[1] + m[2]; break; }
     }
   }
-  if (no) { rec.no = no.replace(/\s/g, '').toUpperCase(); rec.airline = airlineName(rec.no); matched.push('航班号'); }
+  if (no) { rec.no = no.replace(/\s/g, '').toUpperCase(); matched.push('航班号'); }
 
   var codes = [], m2;
   var pre = /[（(]\s*([A-Z]{3})\s*[)）]/g;
   while ((m2 = pre.exec(t))) { if (codes.indexOf(m2[1]) < 0) codes.push(m2[1].toUpperCase()); }
+  if (codes.length < 2) {
+    var pair = t.match(/\b([A-Z]{3})\s*(?:-|–|—|→|至|\/)\s*([A-Z]{3})\b/);
+    if (pair) codes = [pair[1].toUpperCase(), pair[2].toUpperCase()];
+  }
   if (codes.length < 2) {
     var bare = /\b([A-Z]{3})\b/g;
     while ((m2 = bare.exec(t))) { if (AP_INDEX[m2[1]]) { if (codes.indexOf(m2[1]) < 0) codes.push(m2[1]); } }
   }
   if (codes.length >= 2) { rec.depCode = codes[0]; rec.arrCode = codes[1]; matched.push('起降机场'); }
   else if (codes.length === 1) { rec.depCode = codes[0]; }
-  var a1 = airport(rec.depCode), a2 = airport(rec.arrCode);
-  if (a1) { rec.depCity = a1[1]; rec.depAirport = a1[2]; }
-  if (a2) { rec.arrCity = a2[1]; rec.arrAirport = a2[2]; }
   if (!rec.depCity || !rec.arrCity) {
     var hits = cityHits(t);
     if (!rec.depCity && hits[0]) rec.depCity = hits[0];
@@ -12238,7 +12239,7 @@ function saveForm(kind) {
 
   if (kind === 'flight') {
     fresh.no = v('f_no').toUpperCase();
-    fresh.airline = v('f_airline') || airlineName(fresh.no);
+    fresh.airline = v('f_airline');
     var dpBase = base ? (base.depCode || base.depCity) : '';
     var arBase = base ? (base.arrCode || base.arrCity) : '';
     placeOf(v('f_depCode'), dpBase, fresh, 'depCode', 'depCity', 'depAirport');
