@@ -12202,8 +12202,8 @@ function formBody(kind, r, opts) {
   }).join('') + '</div>' : '';
   if (tags) tags = '<div class="recog">以下是识别到的信息，核对或修改后点「确认并加入」</div>' + tags;
 
-  var prev = (sheetCtx && sheetCtx.qrImg) ? sheetCtx.qrImg : '';
-  var saved = !!(sheetCtx && sheetCtx.base && sheetCtx.base.qrImg);
+  var prev = opts.qrImg || '';
+  var saved = !!(r && r.qrImg);
   var qrF = '<div class="field"><label>二维码图片</label>' +
     '<div class="qrpic" id="qrPic">' + (prev ? '<img src="' + prev + '" alt="二维码图片">'
       : (saved ? '<span>已保存一张二维码图片，可重新选择替换</span>' : '<span>上传登机牌或车票上的二维码图片</span>')) + '</div>' +
@@ -12246,13 +12246,13 @@ function openForm(kind, rec, opts) {
   opts = opts || {};
   var isNew = !!opts.isNew;
   var rawBlock = opts.rawText ? '<details style="margin-top:14px"><summary style="font-size:12px;color:var(--ink-2)">查看识别原文</summary><div class="note" style="font-size:12px;max-height:180px;overflow:auto">' + esc(opts.rawText.slice(0, 1200)) + '</div></details>' : '';
-  sheetCtx = { kind: kind, isNew: isNew, id: rec.id, shot: opts.shot || null, qrImg: opts.qrImg || null, base: rec ? cloneRec(rec) : null };
   openSheet({
     title: (isNew ? '核对' : '编辑') + kindName(kind),
     body: formBody(kind, rec, opts) +
       '<div class="sheet-actions"><button class="btn btn-ghost" data-act="sheet-close">取消</button>' +
       '<button class="btn btn-primary" data-act="save" data-kind="' + kind + '" data-id="' + rec.id + '" data-new="' + (isNew ? 1 : 0) + '">' + (isNew ? '确认并加入' : '保存') + '</button></div>' + rawBlock
   });
+  sheetCtx = { kind: kind, isNew: isNew, id: rec.id, shot: opts.shot || null, qrImg: opts.qrImg || null, base: rec ? cloneRec(rec) : null };
 }
 
 function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
