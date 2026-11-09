@@ -85,6 +85,7 @@ main{
 .hero-count{background:rgba(255,255,255,.14);color:#fff;border-radius:3px;padding:2px 7px;letter-spacing:.04em}
 .hero-route{display:grid;grid-template-columns:1fr 34px 1fr;align-items:center;gap:6px;margin:14px 0 10px}
 .hero-pt b{display:block;font-family:var(--mono);font-size:27px;font-weight:600;letter-spacing:.06em;line-height:1}
+.hero-pt b.txt{font-family:var(--sans);font-size:20px;font-weight:600;letter-spacing:.01em;line-height:1.2}
 .hero-pt span{display:block;font-size:11px;color:rgba(255,255,255,.6);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero-pt.right{text-align:right}
 .hero-mid{display:flex;justify-content:center;color:rgba(255,255,255,.55)}
@@ -10878,7 +10879,7 @@ function codesOf(it) {
     var dc = r.depCode || '', ac = r.arrCode || '';
     return {
       a: r.depCity || dc || '', b: r.arrCity || ac || '',
-      an: r.depCity ? (r.depAirport || '') : '', bn: r.arrCity ? (r.arrAirport || '') : '',
+      an: '', bn: '',
       at: fmtTime(r.depTime), bt: fmtTime(r.arrTime), no: r.no || ''
     };
   }
@@ -11548,9 +11549,9 @@ function heroHtml(it, idx) {
     '<div class="hero-top"><span>' + (idx ? '第 ' + (idx + 1) + ' 段 · ' : '下一段 · ') + (it.kind === 'flight' ? '航班' : '火车') + ' ' + esc(r.no || '') + '</span>' +
     '<span class="hero-count">' + countdownText(r.depTime) + '</span></div>' +
     '<div class="hero-route">' +
-    '<div class="hero-pt"><b>' + esc(c.a) + '</b><span>' + esc(c.an) + '</span></div>' +
+    '<div class="hero-pt"><b' + (isCjk(c.a) ? ' class="txt"' : '') + '>' + esc(c.a) + '</b><span>' + esc(c.an) + '</span></div>' +
     '<div class="hero-mid">' + ICON.plane + '</div>' +
-    '<div class="hero-pt right"><b>' + esc(c.b) + '</b><span>' + esc(c.bn) + '</span></div>' +
+    '<div class="hero-pt right"><b' + (isCjk(c.b) ? ' class="txt"' : '') + '>' + esc(c.b) + '</b><span>' + esc(c.bn) + '</span></div>' +
     '</div>' +
     '<div class="hero-bottom"><span>' + fmtMD(r.depTime) + ' ' + fmtTime(r.depTime) + ' – ' + fmtTime(r.arrTime) + '</span>' +
     '<span>' + esc(r.seat || '') + '</span></div>' +
@@ -12002,6 +12003,10 @@ function findRec(kind, id) {
   for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
   return null;
 }
+function isCjk(s) {
+  return /[\u3400-\u9fff]/.test(String(s || ''));
+}
+
 /* 显示以你填/扫到的文字为准：有城市文字就显示文字，代码只在没有文字时出现 */
 function placeText(city, code, airport) {
   var t = String(city || '').trim();
@@ -12057,8 +12062,8 @@ function qrCardHtml(it) {
 function detailHtml(it) {
   var r = it.r, rows = [];
   if (it.kind === 'flight') {
-    rows = [irow('航班号', r.no, 1), irow('航空公司', r.airline), irow('出发', placeText(r.depCity, r.depCode, r.depAirport), 0),
-      irow('到达', placeText(r.arrCity, r.arrCode, r.arrAirport), 0),
+    rows = [irow('航班号', r.no, 1), irow('航空公司', r.airline), irow('出发', r.depCity || r.depCode, 0),
+      irow('到达', r.arrCity || r.arrCode, 0),
       irow('日期', fmtFull(r.depTime)), irow('时间', fmtTime(r.depTime) + ' – ' + fmtTime(r.arrTime) + (durationText(r.depTime, r.arrTime) ? '（' + durationText(r.depTime, r.arrTime) + '）' : ''), 1),
       irow('乘机人', r.name), irow('座位', r.seat, 1), irow('票号', r.ticket, 1), irow('登机口', r.gate, 1), irow('航站楼', r.terminal, 1), irow('订座代码', r.pnr, 1)];
   } else if (it.kind === 'train') {
