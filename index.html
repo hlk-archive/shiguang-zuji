@@ -331,6 +331,11 @@ button.stat span{color:var(--accent)}
 .scan-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .scan-btns .b{border:1px solid var(--line-strong);border-radius:11px;padding:12px;background:#fff;display:flex;align-items:center;justify-content:center;gap:7px;font-size:13.5px;cursor:pointer;-webkit-user-select:none}
 .fh{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.qrpic{margin-top:6px;border:1px solid var(--line);border-radius:8px;background:var(--paper-2);min-height:96px;display:flex;align-items:center;justify-content:center;padding:10px}
+.qrpic img{max-width:100%;max-height:180px;border-radius:6px;display:block}
+.qrpic span{font-size:12px;color:var(--ink-2);text-align:center;line-height:1.5}
+.qrpick{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink);border:1px solid var(--line);background:#fff;border-radius:6px;padding:10px 14px;cursor:pointer}
+.qrpick svg{width:14px;height:14px;color:var(--ink-2)}
 .progress{margin-top:14px}
 .pbar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
 .pbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
@@ -10819,9 +10824,11 @@ function seed() {
 
 /* ---------- 分类 ---------- */
 function nowMs() { return Date.now(); }
+/* 纯按设备本地时间判定：结束时间已过 → 足迹，未到 → 待出行 */
 function isPast(o, endKey) {
-  if (o.done) return true;
-  return new Date(o[endKey]).getTime() <= nowMs() - 1800000;
+  var t = new Date(o && o[endKey]).getTime();
+  if (!t || isNaN(t)) return false;
+  return t <= nowMs();
 }
 function upcomingList() {
   var out = [];
@@ -10872,7 +10879,7 @@ function subLine(it) {
   if (r.guest) bits2.push(r.guest);
   return bits2.join(' · ') || (r.city || '');
 }
-function hasQR(it) { return !!(it.r.qr && it.r.qr.length); }
+function hasQR(it) { return !!(it.r.qr && it.r.qr.length) || !!it.r.qrImg; }
 function codesOf(it) {
   var r = it.r;
   if (it.kind === 'flight') {
@@ -10971,11 +10978,11 @@ function blank(kind) {
   if (kind === 'flight') {
     return { id: uid(), no: '', airline: '', depCode: '', arrCode: '', depCity: '', arrCity: '', depAirport: '', arrAirport: '', km: 0,
       depTime: iso(now), arrTime: iso(new Date(now.getTime() + 2 * 3600000)), name: '', ticket: '', seat: '', gate: '', terminal: '',
-      pnr: '', qr: '', note: '', shot: null, done: false, created: iso(now) };
+      pnr: '', qr: '', qrImg: null, note: '', shot: null, done: false, created: iso(now) };
   }
   if (kind === 'train') {
     return { id: uid(), no: '', depStation: '', arrStation: '', depCity: '', arrCity: '', km: 0,
-      depTime: iso(now), arrTime: iso(new Date(now.getTime() + 4 * 3600000)), name: '', seat: '', ticket: '', qr: '',
+      depTime: iso(now), arrTime: iso(new Date(now.getTime() + 4 * 3600000)), name: '', seat: '', ticket: '', qr: '', qrImg: null,
       note: '', shot: null, done: false, created: iso(now) };
   }
   if (kind === 'hotel') {
@@ -11925,7 +11932,7 @@ function profileHtml() {
     '<button data-act="install-tip">' + ICON.edit + '<span class="li">放到主屏幕</span><span class="ls">无地址栏</span>' + ICON.chevron + '</button>' +
     '<button data-act="reset">' + ICON.trash + '<span class="li">清空所有记录</span><span class="ls">不可撤销</span>' + ICON.chevron + '</button>' +
     '</div>';
-  html += '<div class="ver">V1.0.1</div>';
+  html += '<div class="ver">V1.0.2</div>';
   html += '<div class="about">时光足迹<br>所有记录本地储存，不上传服务器。换设备时先在旧机「导出备份」，把 JSON 传到新机后「从备份恢复」，截图、PDF 与城市图片会一起还原。</div>';
   return '<main>' + html + '</main>';
 }
@@ -12028,7 +12035,7 @@ function boardHtml(it) {
       '<div class="times"><span>' + fmtMD(r.checkIn) + ' ' + fmtTime(r.checkIn) + ' 入住</span><span>' + fmtMD(r.checkOut) + ' ' + fmtTime(r.checkOut) + ' 离店</span></div></div>';
   }
   return '<div class="board"><div class="brow"><span>' + (it.kind === 'flight' ? 'FLIGHT' : 'TRAIN') + ' · ' + esc(r.no || '') + '</span>' +
-    '<span>' + (r.done || isPast(r, 'arrTime') ? '已完成' : countdownText(r.depTime)) + '</span></div>' +
+    '<span>' + (isPast(r, 'arrTime') ? '已完成' : countdownText(r.depTime)) + '</span></div>' +
     '<div class="codes"><div><b>' + esc(c.a) + '</b><span class="c">' + esc(c.an) + '</span></div>' +
     '<div class="mid">' + ICON.plane + '</div>' +
     '<div class="r"><b>' + esc(c.b) + '</b><span class="c">' + esc(c.bn) + '</span></div></div>' +
@@ -12052,8 +12059,13 @@ function mapCardHtml(it) {
 }
 
 function qrCardHtml(it) {
+  var r = it.r;
+  if (r.qrImg) {
+    return '<div class="card"><div class="card-t"><span>二维码图片</span><span>点击查看</span></div>' +
+      '<div class="qr-body" data-qrimg="' + esc(r.qrImg) + '"><div class="pmsg">读取中…</div></div></div>';
+  }
   if (!hasQR(it)) return '';
-  var q = it.r.qr;
+  var q = r.qr;
   return '<div class="qrbox"><div class="qglyph">' + ICON.qr + '</div>' +
     '<div class="qinfo"><b>出行二维码内容</b><code>' + esc(q) + '</code>' +
     '<button class="qbtn" data-act="copy" data-q="' + esc(q) + '">复制内容</button></div></div>';
@@ -12062,21 +12074,24 @@ function qrCardHtml(it) {
 function detailHtml(it) {
   var r = it.r, rows = [];
   if (it.kind === 'flight') {
-    rows = [irow('航班号', r.no, 1), irow('航空公司', r.airline), irow('出发', r.depCity || r.depCode, 0),
-      irow('到达', r.arrCity || r.arrCode, 0),
+    rows = [irow('航班号', r.no, 1), irow('航空公司', r.airline), irow('出发地', r.depCity || r.depCode, 0),
+      irow('到达地', r.arrCity || r.arrCode, 0),
       irow('日期', fmtFull(r.depTime)), irow('时间', fmtTime(r.depTime) + ' – ' + fmtTime(r.arrTime) + (durationText(r.depTime, r.arrTime) ? '（' + durationText(r.depTime, r.arrTime) + '）' : ''), 1),
-      irow('乘机人', r.name), irow('座位', r.seat, 1), irow('票号', r.ticket, 1), irow('登机口', r.gate, 1), irow('航站楼', r.terminal, 1), irow('订座代码', r.pnr, 1)];
+      irow('里程', distOf(it) ? distOf(it) + ' 公里' : '', 1),
+      irow('乘机人', r.name), irow('座位号', r.seat, 1), irow('票号', r.ticket, 1), irow('登机口', r.gate, 1), irow('航站楼', r.terminal, 1)];
   } else if (it.kind === 'train') {
-    rows = [irow('车次', r.no, 1), irow('出发站', r.depStation), irow('到达站', r.arrStation),
+    rows = [irow('车次', r.no, 1), irow('出发地', r.depStation), irow('到达地', r.arrStation),
       irow('日期', fmtFull(r.depTime)), irow('时间', fmtTime(r.depTime) + ' – ' + fmtTime(r.arrTime) + (durationText(r.depTime, r.arrTime) ? '（' + durationText(r.depTime, r.arrTime) + '）' : ''), 1),
-      irow('乘客', r.name), irow('座位', r.seat, 1), irow('票号', r.ticket, 1)];
+      irow('里程', distOf(it) ? distOf(it) + ' 公里' : '', 1),
+      irow('乘客', r.name), irow('座位号', r.seat, 1)];
   } else {
-    rows = [irow('城市', r.city), irow('地址', r.address), irow('入住', fmtFull(r.checkIn) + ' ' + fmtTime(r.checkIn)),
-      irow('离店', fmtFull(r.checkOut) + ' ' + fmtTime(r.checkOut)), irow('共住', nightsBetween(r.checkIn, r.checkOut) + ' 晚', 1),
-      irow('房型', r.roomType), irow('房间号', r.roomNo, 1), irow('入住人', r.guest), irow('确认号', r.confirm, 1)];
+    rows = [irow('酒店名称', r.name, 0), irow('城市', r.city), irow('房型', r.roomType), irow('地址', r.address),
+      irow('入住时间', fmtFull(r.checkIn) + ' ' + fmtTime(r.checkIn)),
+      irow('离店时间', fmtFull(r.checkOut) + ' ' + fmtTime(r.checkOut)), irow('共住', nightsBetween(r.checkIn, r.checkOut) + ' 晚', 1),
+      irow('入住人', r.guest)];
   }
 
-  var doneLabel = (it.r.done || isPast(it.r, it.kind === 'hotel' ? 'checkOut' : 'arrTime')) ? '标记为待出行' : '标记为已完成';
+
   var html = '<div class="detail-in">' +
     '<div class="dhead"><button data-act="detail-close">' + ICON.back + '</button>' +
     '<div class="dt">' + kindName(it.kind).toUpperCase() + ' / ' + (fmtDot(itemDate(it))) + '</div>' +
@@ -12086,7 +12101,7 @@ function detailHtml(it) {
     qrCardHtml(it) +
     (r.shot ? '<div class="card shot" data-shot="' + esc(r.shot) + '"><div class="card-t"><span>票面截图</span></div><div class="shot-body"><div class="pmsg">读取中…</div></div></div>' : '') +
     (r.note ? '<div class="card"><div class="card-t"><span>备注</span></div><div class="note" style="border:0;margin:0;border-radius:0">' + esc(r.note) + '</div></div>' : '') +
-    '<div class="dactions"><button data-act="toggle" data-kind="' + it.kind + '" data-id="' + it.r.id + '">' + ICON.check + doneLabel + '</button>' +
+    '<div class="dactions"><button data-act="edit" data-kind="' + it.kind + '" data-id="' + it.r.id + '">' + ICON.edit + '编辑记录</button>' +
     '<button data-act="del" data-kind="' + it.kind + '" data-id="' + it.r.id + '" class="danger">' + ICON.trash + '删除</button></div>' +
     '</div>';
   return html;
@@ -12111,6 +12126,13 @@ function openDetail(kind, id) {
       drawMap(cv, a ? a.concat([rec.depCode || rec.depCity || '']) : null, b ? b.concat([rec.arrCode || rec.arrCity || '']) : null);
     }
   });
+  var qrKey = rec.qrImg;
+  if (qrKey) {
+    idbGet(qrKey).then(function (data) {
+      var qb = el.querySelector('.qr-body');
+      if (qb && data) qb.innerHTML = '<img src="' + data + '" alt="二维码图片">';
+    }).catch(function () { });
+  }
   var shotKey = rec.shot;
   if (shotKey) {
     idbGet(shotKey).then(function (data) {
@@ -12179,37 +12201,43 @@ function formBody(kind, r, opts) {
     return '<span class="rLtag">' + esc(m) + '</span>';
   }).join('') + '</div>' : '';
   if (tags) tags = '<div class="recog">以下是识别到的信息，核对或修改后点「确认并加入」</div>' + tags;
-  var note = '<div class="field"><label>备注</label><textarea id="f_note" placeholder="想记下的细节">' + esc(r.note || '') + '</textarea></div>';
-  var qrF = '<div class="field"><label>出行二维码内容</label><input id="f_qr" value="' + esc(r.qr || '') + '" placeholder="扫码后自动填入，也可以粘贴"></div>';
+
+  var prev = (sheetCtx && sheetCtx.qrImg) ? sheetCtx.qrImg : '';
+  var saved = !!(sheetCtx && sheetCtx.base && sheetCtx.base.qrImg);
+  var qrF = '<div class="field"><label>二维码图片</label>' +
+    '<div class="qrpic" id="qrPic">' + (prev ? '<img src="' + prev + '" alt="二维码图片">'
+      : (saved ? '<span>已保存一张二维码图片，可重新选择替换</span>' : '<span>上传登机牌或车票上的二维码图片</span>')) + '</div>' +
+    '<label class="qrpick" for="f_qrFile">' + ICON.image + '选择二维码图片</label>' +
+    '<input type="file" accept="image/*" id="f_qrFile" data-file="qrimg" class="fh"></div>';
+
   var body = '';
   if (kind === 'flight') {
     body = tags + '<div class="fgrid">' +
-      twoCol(field('航班号', 'f_no', r.no, 'CA1831'), field('航空公司', 'f_airline', r.airline, '自动识别')) +
-      twoCol(field('出发', 'f_depCode', r.depCity || r.depCode, '照票面填写：北京 或 PEK'), field('到达', 'f_arrCode', r.arrCity || r.arrCode, '照票面填写：上海 或 SHA')) +
-      '<div class="hint">照票面原文填写即可，不查资料库、不自动换算；你写什么就存什么。</div>' +
+      twoCol(field('航班号', 'f_no', r.no, 'CA1831'), field('航空公司', 'f_airline', r.airline, '中国国航')) +
+      twoCol(field('出发地', 'f_depCode', r.depCity || r.depCode, '照票面填写：北京 或 PEK'), field('到达地', 'f_arrCode', r.arrCity || r.arrCode, '照票面填写：上海 或 SHA')) +
+      '<div class="hint">照票面原文填写即可，不查资料库、不自动换算。</div>' +
       twoCol(dtField('出发时间', 'f_depTime', r.depTime), dtField('到达时间', 'f_arrTime', r.arrTime)) +
-      field('里程（公里）', 'f_km', r.km || '', '留空则按起降地自动估算') +
+      field('里程（公里）', 'f_km', r.km || '', '例如 1080') +
       twoCol(field('乘机人', 'f_name', r.name, '姓名'), field('座位号', 'f_seat', r.seat, '32A')) +
-      twoCol(field('票号', 'f_ticket', r.ticket, '999-1234567890'), field('订座代码', 'f_pnr', r.pnr, 'PNR')) +
-      twoCol(field('登机口', 'f_gate', r.gate, 'C12'), field('航站楼', 'f_terminal', r.terminal, 'T3')) +
-      qrF + note + '</div>';
+      twoCol(field('票号', 'f_ticket', r.ticket, '999-1234567890'), field('登机口', 'f_gate', r.gate, 'C12')) +
+      field('航站楼', 'f_terminal', r.terminal, 'T3') +
+      qrF + '</div>';
   } else if (kind === 'train') {
     body = tags + '<div class="fgrid">' +
       twoCol(field('车次', 'f_no', r.no, 'G1234'), field('座位号', 'f_seat', r.seat, '08车12F')) +
-      twoCol(field('出发站', 'f_depStation', r.depStation, '北京南站'), field('到达站', 'f_arrStation', r.arrStation, '上海虹桥站')) +
+      twoCol(field('出发地', 'f_depStation', r.depStation, '北京南'), field('到达地', 'f_arrStation', r.arrStation, '上海虹桥')) +
       twoCol(dtField('出发时间', 'f_depTime', r.depTime), dtField('到达时间', 'f_arrTime', r.arrTime)) +
-      field('里程（公里）', 'f_km', r.km || '', '留空则按城市自动估算') +
-      twoCol(field('乘客', 'f_name', r.name, '姓名'), field('票号', 'f_ticket', r.ticket, '取票号')) +
-      qrF + note + '</div>';
+      field('里程（公里）', 'f_km', r.km || '', '例如 1318') +
+      field('乘客', 'f_name', r.name, '姓名') +
+      qrF + '</div>';
   } else {
     body = tags + '<div class="fgrid">' +
       field('酒店名称', 'f_name', r.name, '上海外滩华尔道夫酒店') +
       twoCol(field('城市', 'f_city', r.city, '上海'), field('房型', 'f_roomType', r.roomType, '江景大床房')) +
       field('地址', 'f_address', r.address, '中山东一路 2 号') +
       twoCol(dtField('入住时间', 'f_checkIn', r.checkIn), dtField('离店时间', 'f_checkOut', r.checkOut)) +
-      twoCol(field('房间号', 'f_roomNo', r.roomNo, '1806'), field('入住人', 'f_guest', r.guest, '姓名')) +
-      field('确认号', 'f_confirm', r.confirm, '预订确认号') +
-      qrF + note + '</div>';
+      field('入住人', 'f_guest', r.guest, '姓名') +
+      '</div>';
   }
   return body;
 }
@@ -12218,13 +12246,13 @@ function openForm(kind, rec, opts) {
   opts = opts || {};
   var isNew = !!opts.isNew;
   var rawBlock = opts.rawText ? '<details style="margin-top:14px"><summary style="font-size:12px;color:var(--ink-2)">查看识别原文</summary><div class="note" style="font-size:12px;max-height:180px;overflow:auto">' + esc(opts.rawText.slice(0, 1200)) + '</div></details>' : '';
+  sheetCtx = { kind: kind, isNew: isNew, id: rec.id, shot: opts.shot || null, qrImg: opts.qrImg || null, base: rec ? cloneRec(rec) : null };
   openSheet({
     title: (isNew ? '核对' : '编辑') + kindName(kind),
     body: formBody(kind, rec, opts) +
       '<div class="sheet-actions"><button class="btn btn-ghost" data-act="sheet-close">取消</button>' +
       '<button class="btn btn-primary" data-act="save" data-kind="' + kind + '" data-id="' + rec.id + '" data-new="' + (isNew ? 1 : 0) + '">' + (isNew ? '确认并加入' : '保存') + '</button></div>' + rawBlock
   });
-  sheetCtx = { kind: kind, isNew: isNew, id: rec.id, shot: opts.shot || null, base: rec ? cloneRec(rec) : null };
 }
 
 function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
@@ -12258,7 +12286,7 @@ function saveForm(kind) {
     fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.seat = v('f_seat').toUpperCase(); fresh.ticket = v('f_ticket');
-    fresh.pnr = v('f_pnr').toUpperCase(); fresh.gate = v('f_gate').toUpperCase(); fresh.terminal = v('f_terminal').toUpperCase();
+    fresh.gate = v('f_gate').toUpperCase(); fresh.terminal = v('f_terminal').toUpperCase();
   } else if (kind === 'train') {
     fresh.no = v('f_no').toUpperCase(); fresh.seat = v('f_seat');
     fresh.depStation = v('f_depStation'); fresh.arrStation = v('f_arrStation');
@@ -12267,14 +12295,14 @@ function saveForm(kind) {
     if (stArr) fresh.arrCity = stArr[0];
     fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
-    fresh.name = v('f_name'); fresh.ticket = v('f_ticket');
+    fresh.name = v('f_name');
   } else {
     fresh.name = v('f_name'); fresh.city = v('f_city'); fresh.address = v('f_address');
-    fresh.roomType = v('f_roomType'); fresh.roomNo = v('f_roomNo'); fresh.guest = v('f_guest'); fresh.confirm = v('f_confirm');
+    fresh.roomType = v('f_roomType'); fresh.guest = v('f_guest');
     fresh.checkIn = fromInput(v('f_checkIn')); fresh.checkOut = fromInput(v('f_checkOut'));
     if (new Date(fresh.checkOut) <= new Date(fresh.checkIn)) fresh.checkOut = iso(new Date(new Date(fresh.checkIn).getTime() + 86400000));
   }
-  fresh.qr = v('f_qr'); fresh.note = v('f_note');
+  if (v('f_qr')) fresh.qr = v('f_qr'); if (v('f_note')) fresh.note = v('f_note');
 
   if (isNew) {
     (kind === 'flight' ? DB.flights : kind === 'train' ? DB.trains : DB.hotels).push(fresh);
@@ -12283,6 +12311,12 @@ function saveForm(kind) {
     var key = 'shot_' + fresh.id;
     fresh.shot = key;
     idbPut(key, shotData).catch(function () { toast('截图保存失败'); });
+  }
+  var qrShot = sheetCtx && sheetCtx.qrImg;
+  if (qrShot) {
+    var qkey = 'qr_' + fresh.id;
+    fresh.qrImg = qkey;
+    idbPut(qkey, qrShot).catch(function () { toast('二维码图片保存失败'); });
   }
   save();
   closeSheet();
@@ -12427,7 +12461,7 @@ function finishRecognize(kind, text, qr, dataURL) {
   scan = scan || {};
   scan.rec = parsed.rec;
   scan.matched = parsed.matched;
-  openForm(kind, parsed.rec, { isNew: true, matched: parsed.matched, rawText: text, shot: dataURL });
+  openForm(kind, parsed.rec, { isNew: true, matched: parsed.matched, rawText: text, shot: dataURL, qrImg: qr ? dataURL : null });
   setTimeout(function () {
     if (parsed.matched.length) toast('已提取 ' + parsed.matched.length + ' 项信息，可修改后保存');
     else toast('没匹配到字段，手动补一下就能保存');
@@ -12537,7 +12571,7 @@ var exportCtx = null;
 async function exportAll() {
   toast('正在打包备份…');
   var keys = [];
-  DB.flights.concat(DB.trains, DB.hotels).forEach(function (x) { if (x.shot) keys.push(x.shot); });
+  DB.flights.concat(DB.trains, DB.hotels).forEach(function (x) { if (x.shot) keys.push(x.shot); if (x.qrImg) keys.push(x.qrImg); });
   DB.guides.forEach(function (g) { if (g.pdfKey) keys.push(g.pdfKey); });
   var media = {}, n = 0;
   for (var i = 0; i < keys.length; i++) {
@@ -12637,29 +12671,13 @@ var ACT = {
     if (!rec) return;
     setTimeout(function () { openForm(kind, rec, { isNew: false }); }, 200);
   },
-  toggle: function (el) {
-    var kind = el.getAttribute('data-kind'), rec = findRec(kind, el.getAttribute('data-id'));
-    if (!rec) return;
-    var endKey = kind === 'hotel' ? 'checkOut' : 'arrTime';
-    var wasDone = rec.done || isPast(rec, endKey);
-    rec.done = !wasDone;
-    if (!rec.done) {
-      var end = new Date(rec[endKey]);
-      if (end < new Date()) {
-        if (kind === 'hotel') rec.checkOut = iso(new Date(Date.now() + 86400000));
-        else rec.arrTime = iso(new Date(Date.now() + 3600000));
-      }
-    }
-    save(); paint();
-    openDetail(kind, rec.id);
-    toast(rec.done ? '已归入足迹' : '已移回待出行');
-  },
   del: function (el) {
     var kind = el.getAttribute('data-kind'), id = el.getAttribute('data-id');
     if (!confirm('删除这条记录？删除后无法恢复。')) return;
     var key = kind === 'flight' ? 'flights' : kind === 'train' ? 'trains' : kind === 'hotel' ? 'hotels' : 'guides';
     var rec = findRec(kind, id);
     if (rec && rec.shot) idbDel(rec.shot);
+    if (rec && rec.qrImg) idbDel(rec.qrImg);
     if (rec && rec.pdfKey) idbDel(rec.pdfKey);
     DB[key] = DB[key].filter(function (x) { return x.id !== id; });
     save();
@@ -12759,6 +12777,19 @@ document.addEventListener('change', function (e) {
   if (t && t.getAttribute && t.getAttribute('data-file') === 'scan') {
     var file = t.files && t.files[0];
     if (file) recognizeImage(file, scan ? scan.kind : 'flight');
+    t.value = '';
+  }
+  if (t && t.getAttribute && t.getAttribute('data-file') === 'qrimg') {
+    var qf = t.files && t.files[0];
+    if (qf && sheetCtx) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        sheetCtx.qrImg = rd.result;
+        var box = document.getElementById('qrPic');
+        if (box) box.innerHTML = '<img src="' + rd.result + '" alt="二维码图片">';
+      };
+      rd.readAsDataURL(qf);
+    }
     t.value = '';
   }
   if (t && t.getAttribute && t.getAttribute('data-file') === 'cityimg') {
