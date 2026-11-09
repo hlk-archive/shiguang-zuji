@@ -10961,12 +10961,12 @@ function airlineName(no) {
 function blank(kind) {
   var now = new Date();
   if (kind === 'flight') {
-    return { id: uid(), no: '', airline: '', depCode: '', arrCode: '', depCity: '', arrCity: '', depAirport: '', arrAirport: '',
+    return { id: uid(), no: '', airline: '', depCode: '', arrCode: '', depCity: '', arrCity: '', depAirport: '', arrAirport: '', km: 0,
       depTime: iso(now), arrTime: iso(new Date(now.getTime() + 2 * 3600000)), name: '', ticket: '', seat: '', gate: '', terminal: '',
       pnr: '', qr: '', note: '', shot: null, done: false, created: iso(now) };
   }
   if (kind === 'train') {
-    return { id: uid(), no: '', depStation: '', arrStation: '', depCity: '', arrCity: '',
+    return { id: uid(), no: '', depStation: '', arrStation: '', depCity: '', arrCity: '', km: 0,
       depTime: iso(now), arrTime: iso(new Date(now.getTime() + 4 * 3600000)), name: '', seat: '', ticket: '', qr: '',
       note: '', shot: null, done: false, created: iso(now) };
   }
@@ -11509,6 +11509,18 @@ function gcKm(a, b) {
   return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(h))));
 }
 
+/* 里程：优先用手填的公里数，其次按坐标算直线距离 */
+function distOf(it) {
+  var r = it.r || {};
+  var manual = Number(r.km);
+  if (manual > 0) return Math.round(manual);
+  var a = null, b = null;
+  if (it.kind === 'flight') { a = coordOf(r.depCode || r.depCity); b = coordOf(r.arrCode || r.arrCity); }
+  else if (it.kind === 'train') { a = coordOf(r.depCity || r.depStation); b = coordOf(r.arrCity || r.arrStation); }
+  if (!a || !b) return 0;
+  return gcKm(a, b);
+}
+
 /* ---------- 视图：待出行 ---------- */
 function topHtml(title, sub, right) {
   return '<div class="top"><div><h1>' + title + '</h1><div class="sub">' + sub + '</div></div>' +
@@ -11878,12 +11890,10 @@ function profileHtml() {
     var r = it.r;
     if (it.kind === 'flight') {
       flights++;
-      var a = coordOf(r.depCode || r.depCity), b = coordOf(r.arrCode || r.arrCity);
-      if (a && b) flyKm += gcKm(a, b);
+      flyKm += distOf(it);
     } else if (it.kind === 'train') {
       trains++;
-      var t1 = coordOf(r.depCity || r.depStation), t2 = coordOf(r.arrCity || r.arrStation);
-      if (t1 && t2) railKm += gcKm(t1, t2);
+      railKm += distOf(it);
     } else {
       nights += nightsBetween(r.checkIn, r.checkOut);
     }
@@ -11918,10 +11928,7 @@ function openCity(city) {
   var n = 0, km = 0;
   recs.forEach(function (it) {
     if (it.kind === 'hotel') n += nightsBetween(it.r.checkIn, it.r.checkOut);
-    else {
-      var a = coordOf(it.r.depCode || it.r.depCity), b = coordOf(it.r.arrCode || it.r.arrCity);
-      if (a && b) km += gcKm(a, b);
-    }
+    else { km += distOf(it); }
   });
   recs.sort(function (a, b) { return dOf(itemDate(b)) - dOf(itemDate(a)); });
   openSheet({
@@ -12015,7 +12022,7 @@ function mapCardHtml(it) {
   } else {
     a = coordOf(r.depCode || r.depCity || r.depStation);
     b = coordOf(r.arrCode || r.arrCity || r.arrStation);
-    var km = a && b ? gcKm(a, b) : 0;
+    var km = distOf(it);
     cap = '<span>' + esc(it.kind === 'flight' ? (r.depCode || r.depCity || '') + ' – ' + (r.arrCode || r.arrCity || '') : (r.depCity || '') + ' – ' + (r.arrCity || '')) + '</span>' +
       '<span>' + (km ? num(km) + ' km' : '缺少坐标') + '</span>';
   }
@@ -12160,6 +12167,7 @@ function formBody(kind, r, opts) {
       twoCol(field('出发（三字码/城市）', 'f_depCode', r.depCode || r.depCity, 'PEK 或 北京'), field('到达（三字码/城市）', 'f_arrCode', r.arrCode || r.arrCity, 'SHA 或 上海')) +
       '<div class="hint">填三字码或城市名都行，会自动补全城市／机场并画航线；库外的城市会原样保存。</div>' +
       twoCol(dtField('出发时间', 'f_depTime', r.depTime), dtField('到达时间', 'f_arrTime', r.arrTime)) +
+      field('里程（公里）', 'f_km', r.km || '', '留空则按起降地自动估算') +
       twoCol(field('乘机人', 'f_name', r.name, '姓名'), field('座位号', 'f_seat', r.seat, '32A')) +
       twoCol(field('票号', 'f_ticket', r.ticket, '999-1234567890'), field('订座代码', 'f_pnr', r.pnr, 'PNR')) +
       twoCol(field('登机口', 'f_gate', r.gate, 'C12'), field('航站楼', 'f_terminal', r.terminal, 'T3')) +
@@ -12169,6 +12177,7 @@ function formBody(kind, r, opts) {
       twoCol(field('车次', 'f_no', r.no, 'G1234'), field('座位号', 'f_seat', r.seat, '08车12F')) +
       twoCol(field('出发站', 'f_depStation', r.depStation, '北京南站'), field('到达站', 'f_arrStation', r.arrStation, '上海虹桥站')) +
       twoCol(dtField('出发时间', 'f_depTime', r.depTime), dtField('到达时间', 'f_arrTime', r.arrTime)) +
+      field('里程（公里）', 'f_km', r.km || '', '留空则按城市自动估算') +
       twoCol(field('乘客', 'f_name', r.name, '姓名'), field('票号', 'f_ticket', r.ticket, '取票号')) +
       qrF + note + '</div>';
   } else {
@@ -12212,6 +12221,7 @@ function saveForm(kind) {
     var dp = resolvePlace(v('f_depCode')), ar = resolvePlace(v('f_arrCode'));
     fresh.depCode = dp ? dp.code : ''; fresh.depCity = dp ? dp.city : ''; fresh.depAirport = dp ? dp.airport : '';
     fresh.arrCode = ar ? ar.code : ''; fresh.arrCity = ar ? ar.city : ''; fresh.arrAirport = ar ? ar.airport : '';
+    fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.seat = v('f_seat').toUpperCase(); fresh.ticket = v('f_ticket');
     fresh.pnr = v('f_pnr').toUpperCase(); fresh.gate = v('f_gate').toUpperCase(); fresh.terminal = v('f_terminal').toUpperCase();
@@ -12220,6 +12230,7 @@ function saveForm(kind) {
     fresh.depStation = v('f_depStation'); fresh.arrStation = v('f_arrStation');
     fresh.depCity = cityNameFrom(fresh.depStation, true);
     fresh.arrCity = cityNameFrom(fresh.arrStation, true);
+    fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.ticket = v('f_ticket');
   } else {
