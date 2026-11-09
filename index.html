@@ -10640,6 +10640,43 @@ function airport(code) {
   if (!code) return null;
   return AP_INDEX[String(code).toUpperCase().trim()] || null;
 }
+function airportOfCity(name) {
+  var t = String(name || '').trim();
+  if (!t) return null;
+  for (var i = 0; i < AIRPORTS.length; i++) { if (AIRPORTS[i][1] === t) return AIRPORTS[i]; }
+  return null;
+}
+/* 把「三字码 / 城市 / 机场名」统一解析成一个地点；认不出时原样保留文字 */
+function resolvePlace(raw) {
+  var t = String(raw || '').trim();
+  if (!t) return null;
+  var up = t.toUpperCase();
+  var byCode = AP_INDEX[up];
+  if (byCode) return { code: byCode[0], city: byCode[1], airport: byCode[2] };
+  var byText = airportByText(t);
+  if (byText) return { code: byText[0], city: byText[1], airport: byText[2] };
+  var t2 = t.replace(/国际机场$/, '').replace(/机场$/, '').replace(/航站楼$/, '');
+  if (t2.length >= 2) {
+    for (var i = 0; i < AIRPORTS.length; i++) {
+      var a = AIRPORTS[i];
+      if (a[2] && (a[2].indexOf(t2) >= 0 || t2.indexOf(a[2]) >= 0)) return { code: a[0], city: a[1], airport: a[2] };
+      if (a[1] && t2.indexOf(a[1]) === 0) return { code: a[0], city: a[1], airport: a[2] };
+    }
+  }
+  var c = cityOf(t);
+  if (c) return { code: '', city: c[0], airport: '' };
+  if (/^[A-Z0-9]{3}$/.test(up)) return { code: up, city: up, airport: '' };
+  return { code: '', city: t, airport: '' };
+}
+function cityNameFrom(text, stationMode) {
+  var t = String(text || '').trim();
+  if (!t) return '';
+  var c = cityOf(t);
+  if (c) return c[0];
+  if (stationMode) t = t.replace(/站$/, '');
+  return t;
+}
+
 function airportByText(text) {
   if (!text) return null;
   var t = String(text).trim();
@@ -12121,7 +12158,7 @@ function formBody(kind, r, opts) {
     body = tags + '<div class="fgrid">' +
       twoCol(field('航班号', 'f_no', r.no, 'CA1831'), field('航空公司', 'f_airline', r.airline, '自动识别')) +
       twoCol(field('出发（三字码/城市）', 'f_depCode', r.depCode || r.depCity, 'PEK 或 北京'), field('到达（三字码/城市）', 'f_arrCode', r.arrCode || r.arrCity, 'SHA 或 上海')) +
-      '<div class="hint">填三字码会自动补全城市与机场并画航线；直接填城市名也能记录行程。</div>' +
+      '<div class="hint">填三字码或城市名都行，会自动补全城市／机场并画航线；库外的城市会原样保存。</div>' +
       twoCol(dtField('出发时间', 'f_depTime', r.depTime), dtField('到达时间', 'f_arrTime', r.arrTime)) +
       twoCol(field('乘机人', 'f_name', r.name, '姓名'), field('座位号', 'f_seat', r.seat, '32A')) +
       twoCol(field('票号', 'f_ticket', r.ticket, '999-1234567890'), field('订座代码', 'f_pnr', r.pnr, 'PNR')) +
@@ -12172,24 +12209,17 @@ function saveForm(kind) {
   if (kind === 'flight') {
     fresh.no = v('f_no').toUpperCase();
     fresh.airline = v('f_airline') || airlineName(fresh.no);
-    var dcIn = v('f_depCode').toUpperCase(), acIn = v('f_arrCode').toUpperCase();
-    var a1 = airport(dcIn), a2 = airport(acIn);
-    var c1 = a1 ? null : cityOf(dcIn), c2 = a2 ? null : cityOf(acIn);
-    fresh.depCode = a1 ? dcIn : '';
-    fresh.arrCode = a2 ? acIn : '';
-    fresh.depCity = a1 ? a1[1] : (c1 ? c1[0] : (fresh.depCity || ''));
-    fresh.depAirport = a1 ? a1[2] : (fresh.depAirport || '');
-    fresh.arrCity = a2 ? a2[1] : (c2 ? c2[0] : (fresh.arrCity || ''));
-    fresh.arrAirport = a2 ? a2[2] : (fresh.arrAirport || '');
+    var dp = resolvePlace(v('f_depCode')), ar = resolvePlace(v('f_arrCode'));
+    fresh.depCode = dp ? dp.code : ''; fresh.depCity = dp ? dp.city : ''; fresh.depAirport = dp ? dp.airport : '';
+    fresh.arrCode = ar ? ar.code : ''; fresh.arrCity = ar ? ar.city : ''; fresh.arrAirport = ar ? ar.airport : '';
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.seat = v('f_seat').toUpperCase(); fresh.ticket = v('f_ticket');
     fresh.pnr = v('f_pnr').toUpperCase(); fresh.gate = v('f_gate').toUpperCase(); fresh.terminal = v('f_terminal').toUpperCase();
   } else if (kind === 'train') {
     fresh.no = v('f_no').toUpperCase(); fresh.seat = v('f_seat');
     fresh.depStation = v('f_depStation'); fresh.arrStation = v('f_arrStation');
-    var c1 = cityOf(fresh.depStation), c2 = cityOf(fresh.arrStation);
-    fresh.depCity = c1 ? c1[0] : (fresh.depCity || '');
-    fresh.arrCity = c2 ? c2[0] : (fresh.arrCity || '');
+    fresh.depCity = cityNameFrom(fresh.depStation, true);
+    fresh.arrCity = cityNameFrom(fresh.arrStation, true);
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.ticket = v('f_ticket');
   } else {
@@ -12211,7 +12241,9 @@ function saveForm(kind) {
   save();
   closeSheet();
   paint();
-  toast(isNew ? '已添加' : '已保存');
+  var missDest = (kind === 'flight') ? (!fresh.arrCity && !fresh.arrCode)
+    : (kind === 'train' ? !fresh.arrStation : false);
+  toast(isNew ? (missDest ? '已添加 · 到达地还没填' : '已添加') : '已保存');
   if (document.getElementById('detail').classList.contains('on')) openDetail(kind, fresh.id);
 }
 
