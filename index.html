@@ -10875,9 +10875,10 @@ function hasQR(it) { return !!(it.r.qr && it.r.qr.length); }
 function codesOf(it) {
   var r = it.r;
   if (it.kind === 'flight') {
+    var dc = r.depCode || '', ac = r.arrCode || '';
     return {
-      a: r.depCode || '', b: r.arrCode || '',
-      an: r.depCity || r.depAirport || r.depCode || '出发', bn: r.arrCity || r.arrAirport || r.arrCode || '到达',
+      a: r.depCity || dc || '', b: r.arrCity || ac || '',
+      an: r.depCity ? (r.depAirport || '') : '', bn: r.arrCity ? (r.arrAirport || '') : '',
       at: fmtTime(r.depTime), bt: fmtTime(r.arrTime), no: r.no || ''
     };
   }
@@ -12001,6 +12002,14 @@ function findRec(kind, id) {
   for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
   return null;
 }
+/* 显示以你填/扫到的文字为准：有城市文字就显示文字，代码只在没有文字时出现 */
+function placeText(city, code, airport) {
+  var t = String(city || '').trim();
+  if (!t) return String(code || '').trim();
+  var ap = String(airport || '').trim();
+  return (ap && ap !== t) ? t + ' · ' + ap : t;
+}
+
 function irow(k, v, mono) {
   return '<div class="irow"><div class="k">' + esc(k) + '</div><div class="v' + (mono ? ' mono' : '') + (v ? '' : ' empty') + '">' + esc(v || '—') + '</div></div>';
 }
@@ -12048,8 +12057,8 @@ function qrCardHtml(it) {
 function detailHtml(it) {
   var r = it.r, rows = [];
   if (it.kind === 'flight') {
-    rows = [irow('航班号', r.no, 1), irow('航空公司', r.airline), irow('出发', (r.depCode ? r.depCode + ' · ' : '') + (r.depAirport || r.depCity), 0),
-      irow('到达', (r.arrCode ? r.arrCode + ' · ' : '') + (r.arrAirport || r.arrCity), 0),
+    rows = [irow('航班号', r.no, 1), irow('航空公司', r.airline), irow('出发', placeText(r.depCity, r.depCode, r.depAirport), 0),
+      irow('到达', placeText(r.arrCity, r.arrCode, r.arrAirport), 0),
       irow('日期', fmtFull(r.depTime)), irow('时间', fmtTime(r.depTime) + ' – ' + fmtTime(r.arrTime) + (durationText(r.depTime, r.arrTime) ? '（' + durationText(r.depTime, r.arrTime) + '）' : ''), 1),
       irow('乘机人', r.name), irow('座位', r.seat, 1), irow('票号', r.ticket, 1), irow('登机口', r.gate, 1), irow('航站楼', r.terminal, 1), irow('订座代码', r.pnr, 1)];
   } else if (it.kind === 'train') {
@@ -12171,8 +12180,8 @@ function formBody(kind, r, opts) {
   if (kind === 'flight') {
     body = tags + '<div class="fgrid">' +
       twoCol(field('航班号', 'f_no', r.no, 'CA1831'), field('航空公司', 'f_airline', r.airline, '自动识别')) +
-      twoCol(field('出发（三字码/城市）', 'f_depCode', r.depCode || r.depCity, 'PEK 或 北京'), field('到达（三字码/城市）', 'f_arrCode', r.arrCode || r.arrCity, 'SHA 或 上海')) +
-      '<div class="hint">填三字码或城市名都行，会自动补全城市／机场并画航线；库外的城市会原样保存。</div>' +
+      twoCol(field('出发', 'f_depCode', r.depCity || r.depCode, '照票面填写：北京 或 PEK'), field('到达', 'f_arrCode', r.arrCity || r.arrCode, '照票面填写：上海 或 SHA')) +
+      '<div class="hint">照票面原文填写即可，不查资料库、不自动换算；你写什么就存什么。</div>' +
       twoCol(dtField('出发时间', 'f_depTime', r.depTime), dtField('到达时间', 'f_arrTime', r.arrTime)) +
       field('里程（公里）', 'f_km', r.km || '', '留空则按起降地自动估算') +
       twoCol(field('乘机人', 'f_name', r.name, '姓名'), field('座位号', 'f_seat', r.seat, '32A')) +
@@ -12218,14 +12227,11 @@ function cloneRec(o) { try { return JSON.parse(JSON.stringify(o)); } catch (e) {
 /* 表单以扫描结果与用户输入为准：用户没改就保留扫描值，改了就直接存原文，不做库内替换 */
 function placeOf(input, baseVal, fresh, codeKey, cityKey, apKey) {
   var t = String(input || '').trim();
+  if (!t) { fresh[cityKey] = ''; fresh[codeKey] = ''; fresh[apKey] = ''; return; }
+  fresh[cityKey] = t;
+  fresh[codeKey] = /^[A-Za-z]{3}$/.test(t) ? t.toUpperCase() : '';
   var b = String(baseVal || '').trim();
-  if (!t) { fresh[codeKey] = ''; fresh[cityKey] = ''; fresh[apKey] = ''; return; }
-  if (t.toLowerCase() === b.toLowerCase()) return;
-  if (/^[A-Za-z]{3}$/.test(t)) {
-    fresh[codeKey] = t.toUpperCase(); fresh[cityKey] = ''; fresh[apKey] = '';
-  } else {
-    fresh[cityKey] = t; fresh[codeKey] = ''; fresh[apKey] = '';
-  }
+  if (b && t.toLowerCase() !== b.toLowerCase()) fresh[apKey] = '';
 }
 
 function saveForm(kind) {
@@ -12240,8 +12246,8 @@ function saveForm(kind) {
   if (kind === 'flight') {
     fresh.no = v('f_no').toUpperCase();
     fresh.airline = v('f_airline');
-    var dpBase = base ? (base.depCode || base.depCity) : '';
-    var arBase = base ? (base.arrCode || base.arrCity) : '';
+    var dpBase = base ? (base.depCity || base.depCode) : '';
+    var arBase = base ? (base.arrCity || base.arrCode) : '';
     placeOf(v('f_depCode'), dpBase, fresh, 'depCode', 'depCity', 'depAirport');
     placeOf(v('f_arrCode'), arBase, fresh, 'arrCode', 'arrCity', 'arrAirport');
     fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
