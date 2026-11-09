@@ -10743,7 +10743,13 @@ function coordOf(text) {
   var a = airport(text);
   if (a) return [a[3], a[4]];
   var c = cityOf(text);
-  return c ? [c[1], c[2]] : null;
+  if (c) return [c[1], c[2]];
+  var b = airportByText(text);
+  return b ? [b[3], b[4]] : null;
+}
+function cityFromCode(code) {
+  var a = airport(code);
+  return a ? a[1] : '';
 }
 
 /* ---------- 存储 ---------- */
@@ -11846,7 +11852,7 @@ function cityAgg() {
   var list = [], map = {};
   pastList('all').forEach(function (it) {
     var r = it.r, d = dOf(itemDate(it)).getTime();
-    var names = it.kind === 'hotel' ? [r.city] : [r.depCity, r.arrCity];
+    var names = it.kind === 'hotel' ? [r.city] : [r.depCity || cityFromCode(r.depCode), r.arrCity || cityFromCode(r.arrCode)];
     names.forEach(function (nm) {
       var c = String(nm || '').trim();
       if (!c) return;
@@ -12203,24 +12209,40 @@ function openForm(kind, rec, opts) {
       '<div class="sheet-actions"><button class="btn btn-ghost" data-act="sheet-close">取消</button>' +
       '<button class="btn btn-primary" data-act="save" data-kind="' + kind + '" data-id="' + rec.id + '" data-new="' + (isNew ? 1 : 0) + '">' + (isNew ? '确认并加入' : '保存') + '</button></div>' + rawBlock
   });
-  sheetCtx = { kind: kind, isNew: isNew, id: rec.id, shot: opts.shot || null };
+  sheetCtx = { kind: kind, isNew: isNew, id: rec.id, shot: opts.shot || null, base: rec ? cloneRec(rec) : null };
 }
 
 function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+function cloneRec(o) { try { return JSON.parse(JSON.stringify(o)); } catch (e) { return null; } }
+/* 表单以扫描结果与用户输入为准：用户没改就保留扫描值，改了就直接存原文，不做库内替换 */
+function placeOf(input, baseVal, fresh, codeKey, cityKey, apKey) {
+  var t = String(input || '').trim();
+  var b = String(baseVal || '').trim();
+  if (!t) { fresh[codeKey] = ''; fresh[cityKey] = ''; fresh[apKey] = ''; return; }
+  if (t.toLowerCase() === b.toLowerCase()) return;
+  if (/^[A-Za-z]{3}$/.test(t)) {
+    fresh[codeKey] = t.toUpperCase(); fresh[cityKey] = ''; fresh[apKey] = '';
+  } else {
+    fresh[cityKey] = t; fresh[codeKey] = ''; fresh[apKey] = '';
+  }
+}
 
 function saveForm(kind) {
   var isNew = !!(sheetCtx && sheetCtx.isNew);
   var id = sheetCtx && sheetCtx.id;
+  var base = (sheetCtx && sheetCtx.base) ? sheetCtx.base : null;
   var rec = isNew ? null : findRec(kind, id);
-  var fresh = rec || blank(kind);
+  var fresh = rec || (base ? cloneRec(base) : null) || blank(kind);
+  if (fresh.matched) delete fresh.matched;
   var shotData = sheetCtx && sheetCtx.shot;
 
   if (kind === 'flight') {
     fresh.no = v('f_no').toUpperCase();
     fresh.airline = v('f_airline') || airlineName(fresh.no);
-    var dp = resolvePlace(v('f_depCode')), ar = resolvePlace(v('f_arrCode'));
-    fresh.depCode = dp ? dp.code : ''; fresh.depCity = dp ? dp.city : ''; fresh.depAirport = dp ? dp.airport : '';
-    fresh.arrCode = ar ? ar.code : ''; fresh.arrCity = ar ? ar.city : ''; fresh.arrAirport = ar ? ar.airport : '';
+    var dpBase = base ? (base.depCode || base.depCity) : '';
+    var arBase = base ? (base.arrCode || base.arrCity) : '';
+    placeOf(v('f_depCode'), dpBase, fresh, 'depCode', 'depCity', 'depAirport');
+    placeOf(v('f_arrCode'), arBase, fresh, 'arrCode', 'arrCity', 'arrAirport');
     fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.seat = v('f_seat').toUpperCase(); fresh.ticket = v('f_ticket');
@@ -12228,8 +12250,9 @@ function saveForm(kind) {
   } else if (kind === 'train') {
     fresh.no = v('f_no').toUpperCase(); fresh.seat = v('f_seat');
     fresh.depStation = v('f_depStation'); fresh.arrStation = v('f_arrStation');
-    fresh.depCity = cityNameFrom(fresh.depStation, true);
-    fresh.arrCity = cityNameFrom(fresh.arrStation, true);
+    var stDep = cityOf(fresh.depStation), stArr = cityOf(fresh.arrStation);
+    if (stDep) fresh.depCity = stDep[0];
+    if (stArr) fresh.arrCity = stArr[0];
     fresh.km = Math.max(0, Math.round(Number(v('f_km').replace(/[^0-9.]/g, '')) || 0));
     fresh.depTime = fromInput(v('f_depTime')); fresh.arrTime = fromInput(v('f_arrTime'));
     fresh.name = v('f_name'); fresh.ticket = v('f_ticket');
